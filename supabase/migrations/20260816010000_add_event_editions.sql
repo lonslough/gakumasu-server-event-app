@@ -45,6 +45,11 @@ using (public.is_admin()) with check (public.is_admin());
 grant select, insert, update on public.event_editions to authenticated;
 revoke all on public.event_editions from anon;
 
+-- Backfilling event_id is a data migration, not a participant submission.
+-- Temporarily remove the existing period guard so a closed event does not
+-- reject updates to historical submissions.
+drop trigger if exists reject_submission_outside_period on public.submissions;
+
 alter table public.submissions add column event_id uuid null
   references public.event_editions(id);
 update public.submissions set event_id = (
@@ -117,6 +122,10 @@ begin
   return new;
 end;
 $$;
+
+create trigger reject_submission_outside_period
+before insert or update on public.submissions
+for each row execute function public.reject_submission_outside_period();
 
 drop function if exists public.list_admin_submissions();
 create function public.list_admin_submissions(p_event_id uuid default null)
